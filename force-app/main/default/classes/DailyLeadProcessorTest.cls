@@ -1,59 +1,56 @@
 // REF: https://trailhead.salesforce.com/content/learn/modules/asynchronous_apex/async_apex_scheduled
 @isTest
-private class AddPrimaryContactTest {
+private class DailyLeadProcessorTest {
+    
+    // Dummy CRON expression: midnight on Aug 19.
+    // Because this is a test, job executes
+    // immediately after Test.stopTest().
+    public static String CRON_EXP = '0 0 0 19 8 ? 2022';
 
-    private static List<Account> getAccountWithState(Integer numRecords, String billingState) {
-        // FACTORY METHOD FOR ACCOUNTS
-        List<Account> accounts = new List<Account>();
+    private static List<Lead> getLeads(Integer numRecords) {
+        List<Lead> leads = new List<Lead>();
 
         for (Integer i = 0; i < numRecords; i++) {
-            accounts.add(new Account(
-                Name = 'Test Account #' + i,
-                BillingState = billingState
+            leads.add(new Lead(
+                Company = 'Test Company',
+                LastName = 'Test Lead #' + i,
+                Status = 'Open'
             ));
         }
-        return accounts;
+        return leads;
     }
 
-    @testSetup static void setup() {
-        // insert 50 Account records for BillingState "NY" and 50 Account records for BillingState "CA". 
-        List<Account> accountsNY = getAccountWithState(50, 'NY');
-        insert accountsNY;
+    @isTest static void testLeadSourceUpdated() {         
+        
+        // insert 200 Lead records
+        List<Lead> leads = getLeads(200);
+        insert leads;  
 
-        List<Account> accountsCA = getAccountWithState(50, 'CA');        
-        insert accountsCA;
-    }
+        // Get the IDs of the leads just inserted
+        Map<Id, Lead> leadMap = new Map<Id, Lead>(leads);
+        List<Id> leadIds = new List<Id>(leadMap.keySet());
 
-
-    @isTest static void testAccountWithContactsforCA() {    
-     
-        Contact testContact = new Contact(LastName = 'LastName Test');
-        AddPrimaryContact accountUpdator = new AddPrimaryContact(testContact, 'CA');
-
-        Test.startTest();        
-        Id batchId = System.enqueueJob(accountUpdator);
+        Test.startTest();
+        
+        // Schedule the test job
+        String jobId = System.schedule(
+                                    'LeadUpdateStatusDreamforce',
+                                    CRON_EXP, 
+                                    new DailyLeadProcessor()
+                                    );        
+                                     
+        // Verify the scheduled job has not run yet.
+        List<Task> lt = [SELECT Id 
+            FROM Task 
+            WHERE WhatId IN :leadIds];
+        System.assertEquals(0, lt.size(), 'Tasks exist before job has run');
+        // Stopping the test will run the job synchronously
         Test.stopTest();
         
-        // GET CA ACCOUNTS
-        List<Account> accts = [select 
-                                    Id, Name, BillingState,(Select Id, Name from Contacts)
-                                from 
-                                    Account
-                                where BillingState = 'CA'];
-
-
-        System.assertEquals(50, accts.size());
-
-        // CHECK ACCOUNTS HAVE ONE CONTACT
-        for (Account acct : [select 
-                                Id, Name, BillingState,(Select Id, Name from Contacts)
-                            from 
-                                Account
-                            where BillingState = 'CA']
-            ) 
-        {            
-            System.assertEquals(1, acct.Contacts.size());
-        }
+               // Verify that Lead's Staus changed to 'Dreamforce';
+        System.assertEquals(200, 
+                            [SELECT count() FROM Lead WHERE LeadSource = 'Dreamforce'],
+                            'Lead\'s Status not updated to Dreamforce');
 
     }    
       
