@@ -1,8 +1,8 @@
 @IsTest
 private class AccountManagerTest {
     // private static String baseUrl = 'https://curious-panda-lzl1hg-dev-ed.lightning.force.com/services/apexrest/';
+    // fix for System.QueryException Error
     private static String baseUrl = '/services/apexrest/';
-
     @isTest static void testGetCaseById() {
         Id recordId = createTestRecord();
         // Set up a test request
